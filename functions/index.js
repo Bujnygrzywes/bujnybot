@@ -1,20 +1,57 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+const functions = require("firebase-functions");
+const cors = require("cors")({ origin: true });
+const admin = require("firebase-admin");
+const serviceAccount = require("./service-account.json");
 
-const { onRequest } = require("firebase-functions/v2/https");
-const logger = require("firebase-functions/logger");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL:
+    "https://examplechatbot-99651-default-rtdb.europe-west1.firebasedatabase.app/",
+});
 
-// Create and deploy your first functions
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+const { SessionsClient } = require("dialogflow");
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+exports.dialogflowGateway = functions.https.onRequest((request, response) => {
+  cors(request, response, async () => {
+    const { queryInput, sessionsId } = request.body;
+    const sessionsClient = new SessionsClient({ credentials: serviceAccount });
+    const session = sessionsClient.sessionPath("ExampleChatbot", sessionsId);
+
+    const responses = await sessionsClient.detectIntent({
+      session,
+      queryInput,
+    });
+
+    const result = responses[0].queryResult;
+
+    result.fulfillmentText;
+
+    response.send(result);
+  });
+});
+
+const { WebhookClient } = require("dialogflow-fulfillment");
+
+exports.dialogflowWebhook = functions.https.onRequest(
+  async (request, response) => {
+    const agent = new WebhookClient({ response, response });
+
+    console.log(JSON.stringify(request.body));
+
+    const result = request.body.queryResult;
+
+    async function userOnboardingHandler(agent) {
+      const db = admin.firestore();
+
+      const profile = db.collection("users").doc("jeffd23");
+
+      const { name, color } = result.parameters;
+
+      await profile.set({ name, color });
+      agent.add(`Welcome abroad my friend!`);
+    }
+    let intentMap = new Map();
+    intentMap.set("UserOnboarding", userOnboardingHandler);
+    agent.handleRequest(intentMap);
+  }
+);
